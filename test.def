@@ -10,16 +10,19 @@ fncode: test
     # print (s)
 
     root_node = parse_html(s)
-    print "root_node: ", type(root_node), "\n"
-    debug_dom(root_node)
+    # print "root_node: ", type(root_node), "\n"
+    # debug_dom(root_node)
 
 fncode: parse_html(s)
     $call init_parse_stack
 
+    DUMP_STUB regex_compile
+    $list parse_attribute
+
     &call parse_loop, s
-        &call if_match_continue, <!--.*-->
+        &call if_match_continue, <!--.*?-->
             #-- comment ----
-        &call if_match_continue, <!DOCTYPE.*>
+        &call if_match_continue, <!DOCTYPE.*?>
             #-- doctype ----
         &call if_match_continue, [^<]+
             #-- text node ----
@@ -44,7 +47,7 @@ fncode: parse_html(s)
         tag_stack=[]
         cur_list=[]
         tag_stack.append: {'_name':'root', '_list':cur_list}
-        debug_dom(tag_stack[0])
+        # debug_dom(tag_stack[0])
 
     subcode: match_start_tag
         tag = {'_name':s_name}
@@ -137,7 +140,11 @@ subcode: parse_loop(s)
             BLOCK
 
     subcode: if_match(break)
-        m = re.match(r"$(pattern)", $(s)[i:])
+        $(autoinc:re)
+        $(block:regex_compile)
+            re$(re) = re.compile(r"$(pattern)")
+        m = re$(re).match($(s)[i:])
+        # m = re.match(r"$(pattern)", $(s)[i:])
         if m:
             i+=m.end()
             BLOCK

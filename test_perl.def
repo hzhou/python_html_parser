@@ -1,0 +1,151 @@
+page: test
+    module: perl
+
+    test()
+
+fncode: test
+    $call get_file_in_t, test.html
+    # print $t
+
+    my $root_node = parse_html($t)
+    debug_dom($root_node)
+
+fncode: parse_html($l)
+    $call init_parse_stack
+
+    &call parse_loop, $l
+        &call if_match_continue, <!--.*?-->
+            #-- comment ----
+        &call if_match_continue, <!DOCTYPE.*?>
+            #-- doctype ----
+        &call if_match_continue, [^<]+
+            #-- text node ----
+            push @$cur_list, $&
+        &call if_match_continue, <(\w+)(.*?)>
+            #-- start tag ----
+            my ($name, $attr)=($1, $2)
+            $call match_start_tag
+        &call if_match_continue, <\/(\w+).*?>
+            #-- end tag ----
+            my $name=$1
+            $call match_end_tag
+
+        #-- error: lone < char --
+        $l=~/\G./gc
+
+    return $tag_stack[0]
+
+    # ------------------------------
+    subcode:: init_parse_stack
+        my @tag_stack
+        my $cur_list=[]
+        push @tag_stack, {'_name'=>'root', '_list'=>$cur_list}
+        # debug_dom(tag_stack[0])
+
+    subcode: match_start_tag
+        my $tag = {'_name'=>$name}
+        parse_attribute($tag, $attr)
+        push @$cur_list, $tag
+
+        $if $tag->{'/'} or $name=~/^(area|base|br|col|embed|hr|img|input|keygen|link|meta|param|source|track|wbr)$/i
+            #-- empty --
+        $elif $name=~/^(script|style|textarea|title)$/i
+            #-- raw text --
+            $call scan_raw_text
+        $else
+            push @tag_stack, $tag
+            $cur_list=[]
+            $tag->{'_list'} = $cur_list
+
+    subcode: match_end_tag
+        $if $name eq $tag_stack[-1]->{'_name'}
+            pop @tag_stack
+            $cur_list=$tag_stack[-1]->{'_list'}
+        $else
+            #-- error --
+            #-    drop missed tags or do nothing
+            my $j=$#tag_stack-1
+            $while $j>0
+                $if $name eq $tag_stack[$j]->{'_name'}
+                    $while @tag_stack>=$j
+                        pop @tag_stack
+                    $cur_list=$tag_stack[-1]->{'_list'}
+                    last
+                $j--
+
+    # ----------------------------
+    subcode: scan_raw_text
+        $if $l=~/\G(.*?)<\/$name\b.*?>/gci
+            $tag->{_text}=$1
+
+#---------------------------------------- 
+fncode: parse_attribute($tag, $attr)
+    &call parse_loop, $attr
+        &call if_match_continue, \s+
+            #-- skip --
+        &call if_match_continue, \/
+            #-- self closing --
+            $tag->{'/'}=1
+        &call if_match_continue, ([^\s'"\\=<>`]+)
+            #-- got a name --
+            my $name=$1
+            #-- = --
+            &call if_match_single, \s*=\s*
+                $call parse_attr_value
+            $else
+                #-- empty ----
+                $tag->{$name}=1
+    # -----
+    subcode: parse_attr_value
+        &call sub_loop
+            &call if_match_break, "((?:[^\\"]+|\\.)*)"
+                $tag->{name}=$1
+            &call if_match_break, '((?:[^\\']+|\\.)*)'
+                $tag->{name}=$1
+            &call if_match_break, [^\s'"=<>`]+
+                $tag->{name}=$&
+            #-- error --
+            $attr=~/\G./gc
+                    
+#-------------------------------
+subcode: parse_loop(s)
+    my $n=length($(s))
+    $while pos($(s))<$n
+        BLOCK
+
+    subcode: sub_loop
+        $while pos($(s))<$n
+            BLOCK
+
+    subcode: if_match(break)
+        $if $(s)=~/\G$(pattern)/gci
+            BLOCK
+            $(if:break!=single)
+                $(break)
+
+    subcode: if_match_single(@pattern)
+        &call if_match, single
+            BLOCK
+
+    subcode: if_match_continue(@pattern)
+        &call if_match, next
+            BLOCK
+
+    subcode: if_match_break(@pattern)
+        &call if_match, last
+            BLOCK
+
+#---------------------------------------- 
+fncode: debug_dom($node)
+    print_node($node, 0)
+
+fncode: print_node($node, $level)
+    $if ref($node) ne "HASH"
+        print "    " x $level, $node, "\n"
+    $else
+        print "    " x $level, $node->{'_name'}, "\n"
+        $if $node->{_list}
+            $foreach $t in @{$node->{'_list'}}
+                print_node($t, $level+1)
+
+

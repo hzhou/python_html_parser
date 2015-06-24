@@ -3,31 +3,83 @@ def test():
     f = open('test.html')
     s = f.read()
     root_node = parse_html(s)
-    print("root_node: ", type(root_node), "\n")
-    debug_dom(root_node)
 
 def parse_html(s):
     tag_stack=[]
     cur_list=[]
     tag_stack.append({'_name':'root', '_list':cur_list})
-    debug_dom(tag_stack[0])
+    re1 = re.compile(r"\s+")
+    re2 = re.compile(r"/")
+    re3 = re.compile(r"([^\s'\"\\=<>`]+)")
+    re4 = re.compile(r"\s*=\s*")
+    re5 = re.compile(r"\"((?:[^\\\"]+|\\.)*)\"")
+    re6 = re.compile(r"'((?:[^\\\']+|\\.)*)'")
+    re7 = re.compile(r"[^\s'\"=<>`]+")
+    re8 = re.compile(r"<!--.*-->")
+    re9 = re.compile(r"<!DOCTYPE.*>")
+    re10 = re.compile(r"[^<]+")
+    re11 = re.compile(r"<(\w+)(.*?)>")
+    re12 = re.compile(r"([^<]|<[^/])+")
+    re13 = re.compile(r"</(\w+).*?>")
+    re14 = re.compile(r"</(\w+).*?>")
+    def parse_attribute(tag, s_attr):
+        n=len(s_attr)
+        i=0
+        while i<n:
+            m = re1.match(s_attr[i:])
+            if m:
+                i+=m.end()
+                continue
+            m = re2.match(s_attr[i:])
+            if m:
+                i+=m.end()
+                tag['/']=1
+                continue
+            m = re3.match(s_attr[i:])
+            if m:
+                i+=m.end()
+                s_attr_name=m.group(1)
+                m = re4.match(s_attr[i:])
+                if m:
+                    i+=m.end()
+                    while i<n:
+                        m = re5.match(s_attr[i:])
+                        if m:
+                            i+=m.end()
+                            tag[s_attr_name] = m.group(1)
+                            break
+                        m = re6.match(s_attr[i:])
+                        if m:
+                            i+=m.end()
+                            tag[s_attr_name] = m.group(1)
+                            break
+                        m = re7.match(s_attr[i:])
+                        if m:
+                            i+=m.end()
+                            tag[s_attr_name] = m.group(0)
+                            break
+                        i+=1
+                else:
+                    tag[s_attr_name]=1
+                continue
+
     n=len(s)
     i=0
     while i<n:
-        m = re.match(r"<!--.*-->", s[i:])
+        m = re8.match(s[i:])
         if m:
             i+=m.end()
             continue
-        m = re.match(r"<!DOCTYPE.*>", s[i:])
+        m = re9.match(s[i:])
         if m:
             i+=m.end()
             continue
-        m = re.match(r"[^<]+", s[i:])
+        m = re10.match(s[i:])
         if m:
             i+=m.end()
             cur_list.append(m.group(0))
             continue
-        m = re.match(r"<(\w+)(.*?)>", s[i:])
+        m = re11.match(s[i:])
         if m:
             i+=m.end()
             s_name=m.group(1)
@@ -40,11 +92,11 @@ def parse_html(s):
             elif re.match(r"script|style|textarea|title", s_name):
                 i_start=i
                 while i<n:
-                    m = re.match(r"([^<]|<[^/])+", s[i:])
+                    m = re12.match(s[i:])
                     if m:
                         i+=m.end()
                         continue
-                    m = re.match(r"</(\w+).*?>", s[i:])
+                    m = re13.match(s[i:])
                     if m:
                         i+=m.end()
                         if m.group(1)==s_name:
@@ -59,7 +111,7 @@ def parse_html(s):
                 cur_list=[]
                 tag['_list'] = cur_list
             continue
-        m = re.match(r"</(\w+).*?>", s[i:])
+        m = re14.match(s[i:])
         if m:
             i+=m.end()
             s_name=m.group(1)
@@ -78,47 +130,6 @@ def parse_html(s):
             continue
         i+=1
     return tag_stack[0]
-
-def parse_attribute(tag, s_attr):
-    n=len(s_attr)
-    i=0
-    while i<n:
-        m = re.match(r"\s+", s_attr[i:])
-        if m:
-            i+=m.end()
-            continue
-        m = re.match(r"/", s_attr[i:])
-        if m:
-            i+=m.end()
-            tag['/']=1
-            continue
-        m = re.match(r"([^\s'\"\\=<>`]+)", s_attr[i:])
-        if m:
-            i+=m.end()
-            s_attr_name=m.group(1)
-            m = re.match(r"\s*=\s*", s_attr[i:])
-            if m:
-                i+=m.end()
-                while i<n:
-                    m = re.match(r"\"((?:[^\\\"]+|\\.)*)\"", s_attr[i:])
-                    if m:
-                        i+=m.end()
-                        tag[s_attr_name] = m.group(1)
-                        break
-                    m = re.match(r"'((?:[^\\\']+|\\.)*)'", s_attr[i:])
-                    if m:
-                        i+=m.end()
-                        tag[s_attr_name] = m.group(1)
-                        break
-                    m = re.match(r"[^\s'\"=<>`]+", s_attr[i:])
-                    if m:
-                        i+=m.end()
-                        tag[s_attr_name] = m.group(0)
-                        break
-                    i+=1
-            else:
-                tag[s_attr_name]=1
-            continue
 
 def debug_dom(node):
     def print_node(node, level):
