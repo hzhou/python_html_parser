@@ -8,7 +8,7 @@ fncode: test
     # print $t
 
     my $root_node = parse_html($t)
-    debug_dom($root_node)
+    # debug_dom($root_node)
 
 fncode: parse_html($l)
     $call init_parse_stack

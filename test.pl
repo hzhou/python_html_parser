@@ -9,7 +9,6 @@ sub test {
         close In;
     }
     my $root_node = parse_html($t);
-    debug_dom($root_node);
 }
 
 sub parse_html {
@@ -19,7 +18,7 @@ sub parse_html {
     push @tag_stack, {'_name'=>'root', '_list'=>$cur_list};
     my $n=length($l);
     while(pos($l)<$n){
-        if($l=~/\G<!--.*-->/gci){
+        if($l=~/\G<!--.*?-->/gci){
             next;
         }
         if($l=~/\G<!DOCTYPE.*?>/gci){

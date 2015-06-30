@@ -1,9 +1,8 @@
-page: test
+include: python/parse_re.def
+
+page: test, basic_frame
     module: python
 
-    test()
-
-fncode: test
     f = open('test.html')
     s = f.read()
 
@@ -13,16 +12,18 @@ fncode: test
     # print "root_node: ", type(root_node), "\n"
     # debug_dom(root_node)
 
-fncode: parse_html(s)
+fncode: parse_html(src)
     $call init_parse_stack
 
     DUMP_STUB regex_compile
     $list parse_attribute
+    $(comment) -------------------------
 
-    &call parse_loop, s
+    &call parse_loop
+        # print "src_pos = ", src_pos
         &call if_match_continue, <!--.*?-->
             #-- comment ----
-        &call if_match_continue, <!DOCTYPE.*?>
+        &call if_match_continue, r"<!DOCTYPE.*?>", re.I
             #-- doctype ----
         &call if_match_continue, [^<]+
             #-- text node ----
@@ -36,9 +37,6 @@ fncode: parse_html(s)
             #-- end tag ----
             s_name=m.group(1)
             $call match_end_tag
-
-        #-- error: lone < char --
-        i+=1
 
     return tag_stack[0]
 
@@ -55,13 +53,13 @@ fncode: parse_html(s)
 
         cur_list.append: tag
 
-        if '/' in tag or re.match(r"area|base|br|col|embed|hr|img|input|keygen|link|meta|param|source|track|wbr", s_name):
+        $if '/' in tag or re.match(r"area|base|br|col|embed|hr|img|input|keygen|link|meta|param|source|track|wbr", s_name, re.I)
             #-- empty --
             pass
-        elif re.match(r"script|style|textarea|title", s_name):
+        $elif re.match(r"script|style|textarea|title", s_name, re.I)
             #-- raw text --
             $call scan_raw_text
-        else :
+        $else
             tag_stack.append: tag
             cur_list=[]
             tag['_list'] = cur_list
@@ -84,7 +82,7 @@ fncode: parse_html(s)
 
     # ----------------------------
     subcode: scan_raw_text
-        i_start=i
+        i_start=src_pos
         &call sub_loop
             &call if_match_continue, ([^<]|<[^/])+
                 # -- include
@@ -93,15 +91,15 @@ fncode: parse_html(s)
                     break
                 $else
                     continue
-            i+=1
-        i_end=i
+            src_pos+=1
+        i_end=src_pos
 
-        tag['_text'] = s[i_start:i_end]
+        tag['_text'] = src[i_start:i_end]
 
 
 #---------------------------------------- 
-fncode: parse_attribute(tag, s_attr)
-    &call parse_loop, s_attr
+fncode: parse_attribute(tag, src)
+    &call parse_loop
         &call if_match_continue, \s+
             #-- skip --
         &call if_match_continue, /
@@ -127,42 +125,6 @@ fncode: parse_attribute(tag, s_attr)
             #-- error --
             i+=1
                     
-#-------------------------------
-subcode: parse_loop(s)
-    $import re
-    n=len($(s))
-    i=0
-    while i<n:
-        BLOCK
-
-    subcode: sub_loop
-        while i<n:
-            BLOCK
-
-    subcode: if_match(break)
-        $(autoinc:re)
-        $(block:regex_compile)
-            re$(re) = re.compile(r"$(pattern)")
-        m = re$(re).match($(s)[i:])
-        # m = re.match(r"$(pattern)", $(s)[i:])
-        if m:
-            i+=m.end()
-            BLOCK
-            $(if:break!=single)
-                $(break)
-
-    subcode: if_match_single(@pattern)
-        &call if_match, single
-            BLOCK
-
-    subcode: if_match_continue(@pattern)
-        &call if_match, continue
-            BLOCK
-
-    subcode: if_match_break(@pattern)
-        &call if_match, break
-            BLOCK
-
 #---------------------------------------- 
 fncode: debug_dom(node)
     $def print_node(node, level)

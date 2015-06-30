@@ -1,10 +1,10 @@
 import re
-def test():
+def main():
     f = open('test.html')
     s = f.read()
     root_node = parse_html(s)
 
-def parse_html(s):
+def parse_html(src):
     tag_stack=[]
     cur_list=[]
     tag_stack.append({'_name':'root', '_list':cur_list})
@@ -15,105 +15,109 @@ def parse_html(s):
     re5 = re.compile(r"\"((?:[^\\\"]+|\\.)*)\"")
     re6 = re.compile(r"'((?:[^\\\']+|\\.)*)'")
     re7 = re.compile(r"[^\s'\"=<>`]+")
-    re8 = re.compile(r"<!--.*-->")
-    re9 = re.compile(r"<!DOCTYPE.*>")
+    re8 = re.compile(r"<!--.*?-->")
+    re9 = re.compile(r"<!DOCTYPE.*?>", re.I)
     re10 = re.compile(r"[^<]+")
     re11 = re.compile(r"<(\w+)(.*?)>")
     re12 = re.compile(r"([^<]|<[^/])+")
     re13 = re.compile(r"</(\w+).*?>")
     re14 = re.compile(r"</(\w+).*?>")
-    def parse_attribute(tag, s_attr):
-        n=len(s_attr)
-        i=0
-        while i<n:
-            m = re1.match(s_attr[i:])
+    def parse_attribute(tag, src):
+        src_len=len(src)
+        src_pos=0
+        while src_pos < src_len:
+            m = re1.match(src, src_pos)
             if m:
-                i+=m.end()
+                src_pos=m.end()
                 continue
-            m = re2.match(s_attr[i:])
+            m = re2.match(src, src_pos)
             if m:
-                i+=m.end()
+                src_pos=m.end()
                 tag['/']=1
                 continue
-            m = re3.match(s_attr[i:])
+            m = re3.match(src, src_pos)
             if m:
-                i+=m.end()
+                src_pos=m.end()
                 s_attr_name=m.group(1)
-                m = re4.match(s_attr[i:])
+                m = re4.match(src, src_pos)
                 if m:
-                    i+=m.end()
-                    while i<n:
-                        m = re5.match(s_attr[i:])
+                    src_pos=m.end()
+                    while src_pos < src_len:
+                        m = re5.match(src, src_pos)
                         if m:
-                            i+=m.end()
+                            src_pos=m.end()
                             tag[s_attr_name] = m.group(1)
                             break
-                        m = re6.match(s_attr[i:])
+                        m = re6.match(src, src_pos)
                         if m:
-                            i+=m.end()
+                            src_pos=m.end()
                             tag[s_attr_name] = m.group(1)
                             break
-                        m = re7.match(s_attr[i:])
+                        m = re7.match(src, src_pos)
                         if m:
-                            i+=m.end()
+                            src_pos=m.end()
                             tag[s_attr_name] = m.group(0)
                             break
                         i+=1
+                        src_pos+=1
                 else:
                     tag[s_attr_name]=1
                 continue
+            src_pos+=1
 
-    n=len(s)
-    i=0
-    while i<n:
-        m = re8.match(s[i:])
+    # -------------------------
+    src_len=len(src)
+    src_pos=0
+    while src_pos < src_len:
+        m = re8.match(src, src_pos)
         if m:
-            i+=m.end()
+            src_pos=m.end()
             continue
-        m = re9.match(s[i:])
+        m = re9.match(src, src_pos)
         if m:
-            i+=m.end()
+            src_pos=m.end()
             continue
-        m = re10.match(s[i:])
+        m = re10.match(src, src_pos)
         if m:
-            i+=m.end()
+            src_pos=m.end()
             cur_list.append(m.group(0))
             continue
-        m = re11.match(s[i:])
+        m = re11.match(src, src_pos)
         if m:
-            i+=m.end()
+            src_pos=m.end()
             s_name=m.group(1)
             s_attr=m.group(2)
             tag = {'_name':s_name}
             parse_attribute(tag, s_attr)
             cur_list.append(tag)
-            if '/' in tag or re.match(r"area|base|br|col|embed|hr|img|input|keygen|link|meta|param|source|track|wbr", s_name):
+            if '/' in tag or re.match(r"area|base|br|col|embed|hr|img|input|keygen|link|meta|param|source|track|wbr", s_name, re.I):
                 pass
-            elif re.match(r"script|style|textarea|title", s_name):
-                i_start=i
-                while i<n:
-                    m = re12.match(s[i:])
+            elif re.match(r"script|style|textarea|title", s_name, re.I):
+                i_start=src_pos
+                while src_pos < src_len:
+                    m = re12.match(src, src_pos)
                     if m:
-                        i+=m.end()
+                        src_pos=m.end()
                         continue
-                    m = re13.match(s[i:])
+                    m = re13.match(src, src_pos)
                     if m:
-                        i+=m.end()
+                        src_pos=m.end()
                         if m.group(1)==s_name:
                             break
                         else:
                             continue
-                    i+=1
-                i_end=i
-                tag['_text'] = s[i_start:i_end]
-            else :
+                    src_pos+=1
+                    src_pos+=1
+                i_end=src_pos
+                tag['_text'] = src[i_start:i_end]
+            else:
                 tag_stack.append(tag)
                 cur_list=[]
                 tag['_list'] = cur_list
             continue
-        m = re14.match(s[i:])
+        m = re14.match(src, src_pos)
         if m:
-            i+=m.end()
+            src_pos=m.end()
             s_name=m.group(1)
             if s_name == tag_stack[-1]['_name']:
                 tag_stack.pop()
@@ -128,7 +132,7 @@ def parse_html(s):
                         break
                     j-=1
             continue
-        i+=1
+        src_pos+=1
     return tag_stack[0]
 
 def debug_dom(node):
@@ -142,4 +146,5 @@ def debug_dom(node):
                     print_node(t, level+1)
     print_node(node, 0)
 
-test()
+if __name__ == "__main__":
+    main()
