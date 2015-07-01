@@ -1,0 +1,31 @@
+fncode: parse_style_sheet(style_list, src)
+    &call parse_loop
+        &call if_match_continue, /\*.*?\*/
+            #-- comment ----
+        &call if_match_continue, \s+
+            #-- skip space ----
+        &call if_match_continue, [^{]+
+            s_selector = m.group(0)
+            style = {}
+            entry = {"selector":s_selector, "style":style}
+            &call if_match_single, {
+                src_pos = parse_style(style, src, src_pos)
+
+            style_list.append(entry)
+
+fncode: parse_style(style, src, src_pos)
+    src_len = len(src)
+    &call sub_loop
+        &call if_match_continue, \s+
+            #-- skip --
+        &call if_match_continue, /\*.*?\*/
+            #-- comment ----
+        &call if_match_continue, (-?[_a-z][_a-z0-9-]*)\s*:\s*
+            s_property = m.group(1)
+            &call if_match_single, ([^;}]+)
+                style[s_property]=m.group(1)
+        &call if_match_continue, ;
+            #-- skip --
+        &call if_match_break, }
+            #-- skip --
+    return src_pos

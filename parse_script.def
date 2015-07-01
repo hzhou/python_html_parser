@@ -1,0 +1,237 @@
+include: macros_javascript/operator.def
+include: macros_javascript/eval_expr.def
+fncode: parse_javascript(src)
+    $call parse_setup
+    $call parse_frame
+
+    subcode: init
+        context_stack=[]
+        cur_context = "function"
+        cur_item = []
+        stack.append( ({'_list':cur_item}, "function") )
+
+    # ---------------------------------------- 
+    subcode: match
+        &call if_match_continue, function\s*
+            func = {}
+            &call if_match_single, ([_a-zA-Z\$]\w*)\s*
+                func['_name']=m.group(1)
+            &call if_match_single, \((.*?)\)\s*
+                func['_param']=m.group(1)
+            &call if_match_single, {
+                context_stack.append(context_stack)
+                cur_context = "function"
+                stack.append('function', '(+')
+                func['_list']=[]
+                stack.append((func, "function"))
+                continue
+            $else
+                raise Exception("function missing body")
+
+        &call if_match_continue, \s+
+            #-- spaces --
+        &call if_match_continue, r"//.*$", re.M
+            #-- comment --
+        &call if_match_continue, r"/\*.*?\*/", re.S
+            #-- comment --
+        &call if_match_break, true|false
+            cur = (m.group(0), 'bool')
+        &call if_match_break, null
+            cur = (m.group(0), 'null')
+
+        #-- string ------------
+        &call if_match_break, \"(([^\\\"]|\\.)*)\"
+            r_esc_extra = re.compile(r"\\([^0btnvfrxuX'\"\\])")
+            s = r_esc_extra.sub(r'\1', m.group(0))
+            s = eval(s)
+            cur = (s, "string")
+        &call if_match_break, '(([^\\']|\\.)*)'
+            #--TODO: detect extra escapes e.g. \#
+            r_double = re.compile('(?!\\)"')
+            s = r.sub('\\"', m.group(1))
+            s = eval('"'+s+'"')
+            cur = (s, 'string')
+        &call if_match_break, /([^\\]|\\.)+/[igm]*
+            cur = (m.group(0), "regex")
+
+        #-- numbers ------------
+        &call if_match_break, r"0x[0-9a-f]+", re.I
+            cur = (int(m.group(1), 16), 'int')
+        &call if_match_break, r"0[0-7]*", re.I
+            cur = (int(m.group(1), 8), 'int')
+        &call if_match_break, (\d+)(\.\d+)?([eE][+-]?\d+)?
+            $if m.group(2) or m.group(3)
+                cur = (float(m.group(0)), 'float')
+            $else
+                cur = (int(m.group(1)), 'int')
+
+        #-- operators -------------
+        # - 
+        &call if_match_break, \+\+|--|new|in|delete|typeof|void|instanceof
+            op = m.group(0)
+            cur = (op, op)
+        # - 
+        &call if_match_break, (==?=?|!==?|>>?>?=?|<<?=?|&&?|\|\|?)
+            op = m.group(0)
+            cur = (op, op)
+        &call if_match_break, [+-*/%^&|]=?
+            op = m.group(0)
+            cur = (op, op)
+        &call if_match_break, [,.]
+            op = m.group(0)
+            cur = (op, op)
+        # - 
+        &call if_match_break, [~!]
+            op = m.group(0)
+            cur = (op, op)
+
+        #-- brackets ------------
+        &call if_match_break, [\[\(\{]
+            #---- all opening brackets atom differentiates type
+            #-    reduction happens at ')'
+            op = m.group(0)
+            $if $(type:-1) in atom_type
+                $if op == '('
+                    op="fcall"
+                $elif op== '['
+                    op="index"
+            $else
+                $if op == '{'
+                    # - context object literal
+                $elif op == '['
+                    # - context array literal
+            cur = (op, '(')
+
+        &call if_match_break, [\]\)\}]
+            op = m.group(0)
+            cur = (op, ')')
+
+
+        #-- identifier -----------
+        &call if_match_break, [_a-zA-Z\$]\w*
+            cur = (m.group(0), 'identifier')
+
+    # ---------------------------------------- 
+    subcode: process
+        $if $(cur_type) in atom_type
+            #-- atom ------------------
+            $if $(type:-1) in atom_type
+                raise Exception("two adjacent atoms")
+        $elif $(type:-1)=='(+'
+            $if $(cur_type)==')'
+                $call reduce_empty_bracket
+            $else
+                cur=(cur[0], "unary")
+                break
+        $else 
+            #-- operator ---------------
+            $if not $(type:-1) in atom_type
+                cur=(cur[0], "unary")
+                break
+
+            $(set:cond) join, " and "
+                len(stack)>2
+                less_precedence($(cur_type), $(type:-2))
+            $if $(cond)
+                $call reduce_stack
+                continue
+
+        subcode: reduce_stack
+            op = $(type:-2)
+            $if op == ';'
+                $call reduce_list, "statement_list"
+            $elif op == ','
+                $call reduce_list, "list"
+            $elif $(or: op=='*':   +,-,*,/)
+                $call reduce_binary
+            $elif op == 'unary'
+                op = $(atom:-2)
+                $call reduce_unary
+            $elif op == '(+'
+                $call reduce_bracket
+
+        subcode: reduce_bracket
+            #-- reduce bracket ----
+            type = $(atom:-2)
+            $if type=="fcall"
+                $call reduce_fcall
+            $elif type == "index"
+                $call reduce_index
+            $elif type == "function"
+                func = cur_context
+                context_stack.pop()
+                func['_list']=stack[-1]
+                stack.pop()
+                cur=(func, "function")
+            $elif type == '['
+                cur = ($(atom:-1), 'array')
+                stack[-2:]=[]
+            $elif type == '{'
+                cur = ($(atom:-1), 'object')
+                stack[-2:]=[]
+            $else 
+                cur = stack[-1]
+                stack[-2:]=[]
+
+        subcode: reduce_empty_bracket
+            stack.append(("", null))
+            $call reduce_bracket
+
+    # ---------------------------------------- 
+    macros:
+        binary_cond: $(type:-3) in $1_type and $(type:-1) in $2_type
+        or_cond: $(type:-3) in $1_type or  $(type:-1) in $1_type
+
+    subcode: reduce_list(listtype)
+        $if $(type:-3)==$(listtype)
+            t= $(atom:-3)
+            t.append(stack[-1])
+            stack[-2:]=[]
+        $else
+            t=[]
+            t.append(stack[-3])
+            t.append(stack[-1])
+            stack[-3:]=[(t, $(listtype))]
+
+    subcode: reduce_binary
+        $if $(binary_cond:literal, literal)
+            ans = eval_binary(op, stack[-3],stack[-1])
+            stack[-3:]=[ans]
+        $else
+            t = (op, $(atom:-3), $(atom:-1))
+            stack[-3:]=[(t, 'binary')]
+
+    subcode: reduce_unary
+        $if op != '-'
+            raise Exception("unhandled unary operator:"+$(atom:-2))
+        $if $(type:-1) in number_type
+            ans = eval_unary(op, stack[-1])
+            stack[-2:]=[ans]
+        $else
+            t = (op, $(atom:-1))
+            stack[-2:]=[(t, 'unary')]
+
+    subcode: reduce_fcall
+        stack[-2:]=(stack[-2], stack[-1])
+
+    subcode: reduce_index
+        stack[-2:]=(stack[-2], stack[-1])
+
+    # ---------------------------------------- 
+    subcode: parse_setup
+        $call js_operator_precedence
+        $def less_precedence(op1, op2)
+            p1=precedence[op1]
+            p2=precedence[op2]
+            $if p1<p2
+                return True
+            $elif p1>p2
+                return False
+            $else
+                $if p1==2 or p1==3 or p1==99
+                    return False
+                $else
+                    return True
+
+
+

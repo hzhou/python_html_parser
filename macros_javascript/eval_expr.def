@@ -1,0 +1,43 @@
+subcode:: _autoload
+    atom_type = ["bool","null","int", "float","string","identifier"]
+    literal_type = ["bool", "null", "int", "float", "string"]
+    number_type = ["int", "float"]
+    float_type  = ["float"]
+    expr_type   = ["identifier", "binary", "unary"]
+
+fncode: eval_binary(op, a1, a2)
+    macros:
+        bi_type: a1[1] in $1_type and a2[1] in $2_type
+        or_type: a1[1] in $1_type or  a2[1] in $1_type
+
+    $if $(bi_type:number)
+        $if $(or_type:float)
+            b1 = float(a1[0])
+            b2 = float(a2[0])
+            type = "float"
+        $else
+            b1 = int(a1[0])
+            b2 = int(a1[1])
+            type = "int"
+
+        $if op=='+'
+            ans = b1+b2
+        $elif op=='-'
+            ans = b1-b2
+        $elif op=='*'
+            ans = b1*b2
+        $elif op=='/'
+            ans = b1/b2
+
+        return (ans, type)
+
+    raise Exception("eval_binary, not implemented")
+
+fncode: eval_unary(op, a)
+    $if op=='-'
+        $if a[1] in number_type
+            return (-a[0], a[1])
+
+    raise Exception("eval_unary, not implemented")
+
+        
