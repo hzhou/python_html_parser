@@ -7,8 +7,20 @@ fncode: parse_javascript(src)
     subcode: init
         context_stack=[]
         cur_context = "function"
-        cur_item = []
-        stack.append( ({'_list':cur_item}, "function") )
+        cur_item = {"_list":[]}
+
+    subcode: start_context(context)
+        context_stack.append: (cur_item, cur_context)
+        cur_context = "$(context)"
+        stack.append("$(context)", '(')
+        $(if:context=function)
+            func['_list']=[]
+            cur_item=func
+        $(elif:context=object)
+            cur_item={}
+        $(elif:context=array))
+            cur_item=[]
+
 
     # ---------------------------------------- 
     subcode: match
@@ -19,12 +31,7 @@ fncode: parse_javascript(src)
             &call if_match_single, \((.*?)\)\s*
                 func['_param']=m.group(1)
             &call if_match_single, {
-                context_stack.append(context_stack)
-                cur_context = "function"
-                stack.append('function', '(+')
-                func['_list']=[]
-                stack.append((func, "function"))
-                continue
+                $call start_context, function
             $else
                 raise Exception("function missing body")
 
@@ -86,21 +93,24 @@ fncode: parse_javascript(src)
             cur = (op, op)
 
         #-- brackets ------------
-        &call if_match_break, [\[\(\{]
+        &call if_match_continue, [\[\(\{]
             #---- all opening brackets atom differentiates type
             #-    reduction happens at ')'
             op = m.group(0)
             $if $(type:-1) in atom_type
                 $if op == '('
-                    op="fcall"
+                    stack.append: ('fcall', '(')
                 $elif op== '['
-                    op="index"
+                    stack.append: ('index', '(')
+                $else
+                    raise Exception("error bracket open")
             $else
                 $if op == '{'
-                    # - context object literal
+                    $call start_context, object
                 $elif op == '['
-                    # - context array literal
-            cur = (op, '(')
+                    $call start_context, array
+                $else
+                    stack.append: ('(', '(')
 
         &call if_match_break, [\]\)\}]
             op = m.group(0)
@@ -117,7 +127,7 @@ fncode: parse_javascript(src)
             #-- atom ------------------
             $if $(type:-1) in atom_type
                 raise Exception("two adjacent atoms")
-        $elif $(type:-1)=='(+'
+        $elif $(type:-1)=='('
             $if $(cur_type)==')'
                 $call reduce_empty_bracket
             $else
@@ -147,7 +157,7 @@ fncode: parse_javascript(src)
             $elif op == 'unary'
                 op = $(atom:-2)
                 $call reduce_unary
-            $elif op == '(+'
+            $elif op == '('
                 $call reduce_bracket
 
         subcode: reduce_bracket
