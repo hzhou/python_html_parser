@@ -1,0 +1,158 @@
+subcode:: parse_javascript
+    $call parse_frame
+
+    subcode: init
+        codelist_context=["function","compound","switch_compound", "try_compound"]
+        $call parse_setup
+        context_stack=[]
+        cur_context = "function"
+        func= {"_name":"_global"}
+        $call setup_context_function, func
+
+    subcode: setup_context_function(fn)
+        cur_function_vardict={}
+        cur_function_codelist=[]
+        $(fn)['_list']=cur_function_codelist
+        $(fn)['_var']=cur_function_vardict
+        cur_item = $(fn)
+
+    subcode: setup_context_compound(list)
+        cur_item=$(list)
+        cur_function_codelist=cur_item
+
+    subcode: start_context(context)
+        context_stack.append: (cur_item, cur_context)
+        cur_context = "$(context)"
+        stack.append: ("$(context)", 'boc')
+
+    subcode: pop_context
+        $if cur_context in codelist_context
+            $for x in reversed(context_stack)
+                $if x[1]=="compound" or x[1]=="switch_compound"
+                    cur_function_codelist=x[0]
+                    break
+                $elif x[1]=="function"
+                    cur_function_codelist=x[0]["_list"]
+                    break
+        $if cur_context=="function"
+            $for x in reversed(context_stack)
+                $if x[1]=="function"
+                    cur_function_vardict=x[0]["_var"]
+                    break
+        (cur_item, cur_context)=context_stack.pop()
+
+    # --------
+    subcode:: push_statement(t)
+        $(if:t!=t)
+            t = $(t)
+
+        $if 0
+            pass
+        $elif cur_context == "var"
+            add_var(t)
+            stack.pop()
+            $call pop_context
+        $elif cur_context == "return"
+            stack.pop()
+            $call pop_context
+            t = (t, "return")
+        $elif cur_context == "throw"
+            stack.pop()
+            $call pop_context
+            t = (t, "throw")
+
+        $if cur_context in codelist_context
+            cur_function_codelist.append: t
+        $elif cur_context == "if_branch"
+            cur_item.append: t
+            stack.pop()
+            $call pop_context
+        $elif cur_context == "while_block"
+            cur_item.append: t
+            stack.pop()
+            $call pop_context
+        $elif cur_context == "with_block"
+            cur_item.append: t
+            stack.pop()
+            $call pop_context
+        $elif cur_context == "do_block"
+            cur_item.append: t
+            stack.pop()
+            $call pop_context
+        $call @push_statement_cases
+        $else
+            raise Exception("wrong context for statement")
+
+    # --------
+    $def add_var(t)
+        $if t[1] == "identifier"
+            $if t[0] not in cur_function_vardict
+                cur_function_vardict[t[0]]=None
+        $elif t[1] == "binary"
+            add_var(t[0][1])
+        $elif t[1] == "list"
+            $for t2 in t[0]
+                add_var(t2)
+
+    # ---------------------------------------- 
+    subcode: skip_space_wide
+        skip_space(1)
+
+    subcode: skip_space_narrow
+        skip_space(0)
+
+    subcode: skip_char(c)
+        $if src[src_pos]==c
+            src_pos++
+
+    subcode: match_char(c)
+        $if src[src_pos]==c
+            src_pos++
+        $else
+            raise Exception("expect char "+c)
+
+    subcode: parse_setup
+        $call js_operator_precedence
+        $def less_precedence(op1, op2)
+            p1=precedence[op1]
+            p2=precedence[op2]
+            $if p1<p2
+                return True
+            $elif p1>p2
+                return False
+            $else
+                $if p1==2 or p1==3 or p1==99
+                    return False
+                $else
+                    return True
+
+        $def skip_space(skip_newline=0)
+            nonlocal src_pos
+            &call sub_loop
+                $if skip_newline
+                    &call if_match_continue, \s+
+                        #-- spaces --
+                $else
+                    &call if_match_continue, [ \t]+
+                        #-- skip --
+                &call if_match_continue, r"//.*$", re.M
+                    #-- comment --
+                &call if_match_continue, r"/\*.*?\*/", re.S
+                    #-- comment --
+                break
+
+        $def match_end_of_statement(include_newline=0)
+            nonlocal src_pos
+            $if src[src_pos]==';'
+                src_pos+=1
+                return 1
+            $if_match [\r\n]+
+                $if include_newline
+                    return 1
+                skip_space(0)
+                $if $(type:-1) in atom_type
+                    $if re.match(r"[$\w\d_]", src[src_pos])
+                        return 1
+            $call skip_space_wide
+            return 0
+

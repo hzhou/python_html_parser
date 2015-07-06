@@ -1,0 +1,83 @@
+subcode:: parse_javascript
+    macros:
+        binary_cond: $(type:-3) in $1_type and $(type:-1) in $2_type
+        or_cond: $(type:-3) in $1_type or  $(type:-1) in $1_type
+
+    subcode: reduce_list(listtype)
+        $if $(type:-3)==$(listtype)
+            t= $(atom:-3)
+            t.append(stack[-1])
+            stack[-2:]=[]
+        $else
+            t=[]
+            t.append(stack[-3])
+            t.append(stack[-1])
+            stack[-3:]=[(t, $(listtype))]
+
+    subcode: reduce_binary
+        $if $(binary_cond:literal, literal)
+            ans = eval_binary(op, stack[-3],stack[-1])
+            stack[-3:]=[ans]
+        $else
+            t = (op, $(atom:-3), $(atom:-1))
+            stack[-3:]=[(t, 'binary')]
+
+    subcode: reduce_unary
+        $if op != '-'
+            raise Exception("unhandled unary operator:"+$(atom:-2))
+        $if $(type:-1) in number_type
+            ans = eval_unary(op, stack[-1])
+            stack[-2:]=[ans]
+        $else
+            t = (op, $(atom:-1))
+            stack[-2:]=[(t, 'unary')]
+
+    #-- op == '(' -----------------
+    subcode: reduce_bracket
+        # print "reduce_bracket: type = ", type
+        $if type=="fcall"
+            $call reduce_fcall
+        $elif type == "index"
+            $call reduce_index
+        $else 
+            #-- plain parentheses ----
+            cur = stack[-1]
+            stack[-2:]=[]
+
+        # ----
+        subcode: reduce_fcall
+            cur = ((stack[-3], stack[-1]), "fcall")
+            stack[-3:]=[]
+
+        subcode: reduce_index
+            cur = ((stack[-3], stack[-1]), "index")
+            stack[-3:]=[]
+
+    #-- op == 'boc' -----------------
+    subcode: reduce_context
+        $if type in codelist_context
+            $call push_statement, stack[-1]
+        $elif type == "object"
+            pass
+        $elif type == "array"
+            $if $(type:-1)=="list"
+                cur_item = $(atom:-1)
+            $else
+                cur_item = [stack[-1]]
+        $elif type == "compound"
+            $call push_statement, stack[-1]
+            cur_item = cur_function_codelist
+        $call @reduce_context_cases
+        $elif type == "if_cond"
+            cur_item.append: stack[-1]
+        $elif type == "while_cond"
+            cur_item.append: stack[-1]
+        $elif type == "with_cond"
+            cur_item.append: stack[-1]
+        $elif type == "do_cond"
+            cur_item.append: stack[-1]
+        $elif type == "switch_cond"
+            cur_item.append: stack[-1]
+        $else
+            cur_item = stack[-1]
+

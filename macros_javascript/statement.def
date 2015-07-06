@@ -1,0 +1,163 @@
+subcode:: parse_javascript
+    subcode: match_function
+        $if_match function
+            func = {}
+            skip_space(1)
+            &call if_match_single, ([_a-zA-Z\$]\w*)
+                func['_name']=m.group(1)
+                skip_space(1)
+            &call if_match_single, \((.*?)\)
+                func['_param']=m.group(1)
+                skip_space(1)
+
+            $if_match {
+                $call start_context, function
+                $call setup_context_function, func
+                continue
+            $else
+                raise Exception("function missing body")
+
+    subcode:: match_statement
+        #---- statement --------------------- 
+        &call if_match_continue, var
+            $call start_context, var
+
+        &call if_match_continue, return
+            $call start_context, return
+
+        &call if_match_continue, if
+            &call match_condition, if
+                $call start_context, if_cond
+                cur_item = []
+                cur_function_codelist.append: (cur_item, "if")
+
+        &call if_match_continue, else(\s+if)?
+            $if cur_function_codelist[-1][1]=="if"
+                $if m.group[1]
+                    &call match_condition, if
+                        $call start_context, if_cond
+                        cur_item = cur_function_codelist[-1][0]
+                $else
+                    $call start_context, if_branch
+                    cur_item = cur_function_codelist[-1][0]
+                    cur_item.append: None
+            $else
+                raise Exception("dangling else")
+
+        &call if_match_continue, with
+            &call match_condition, with
+                $call start_context, with_cond
+                cur_item=[]
+                cur_function_codelist.append: (cur_item, "with")
+
+        &call if_match_continue, switch
+            &call match_condition, switch
+                $call start_context, switch_cond
+                cur_item=[]
+                cur_function_codelist.append: (cur_item, "switch")
+
+        &call if_match_continue, do
+            $call start_context, do_block
+            cur_item=[]
+            cur_function_codelist.append: (cur_item, "do")
+
+        $call @match_statement_cases
+
+        &call if_match_continue, try
+            $call skip_space_wide
+            &call if_match_single, {
+                $call start_context, try_compound
+                cur_item=[]
+                cur_function_codelist.append: ([cur_item, None, None, None], "try")
+        &call if_match_continue, catch
+            $if cur_function_codelist[-1][1]=="try"
+                t=cur_function_codelist[-1][0]
+            $else
+                raise Exception("dangling catch")
+            $call skip_space_wide
+            &call if_match_single, \(\s*(\w+)\s*\)
+                t[1]=m.group(1)
+            $else
+                raise Exception("Expect catch variable")
+            $call skip_space_wide
+            &call if_match_single, {
+                $call start_context, try_compound
+                cur_item=[]
+                t[2]=cur_item
+        &call if_match_continue, finally
+            $if cur_function_codelist[-1][1]=="try"
+                t=cur_function_codelist[-1][0]
+            $else
+                raise Exception("dangling catch")
+            $call skip_space_wide
+            &call if_match_single, {
+                $call start_context, try_compound
+                cur_item=[]
+                t[3]=cur_item
+
+        &call if_match_continue, (break|continue)
+            t = m.group(1)
+            t2 = ''
+            $call skip_space_narrow
+            &call if_match_single, [_a-zA-Z\$]\w*
+                t2 = m.group(0)
+            cur_function_codelist.append: (t2, t)
+            $call skip_space_narrow
+            &call if_match_single, [;\n\r]
+                #-- ok
+            $else
+                raise Exception("; expected")
+
+        # ----
+        subcode: match_condition(type)
+            skip_space(1)
+            &call if_match_single, (
+                BLOCK
+            $else
+                raise Exception("$(type) missing condition")
+
+    #-- for -----------------
+    subcode:: match_statement_cases
+        $if_match for
+            &call match_condition, for
+                $call start_context, for_cond
+                cur_item=[]
+                cur_function_codelist.append: (cur_item, "for")
+
+    subcode:: reduce_context_cases
+        $elif type == "for_cond"
+            t = cur_item
+            cur_item.append: stack[-1]
+            stack[-2:]=[]
+            $call pop_context
+            $call start_context, for_block
+            cur_item = t
+            cur=('', None)
+            break
+
+    subcode:: push_statement_cases
+        $elif cur_context == "for_cond"
+            cur_item.append: t
+        $elif cur_context == "for_block"
+            cur_item.append: t
+            stack.pop()
+            $call pop_context
+
+    #-- while --------------------------
+    subcode:: match_statement_cases
+        $if_match while
+            &call match_condition, while
+                $if cur_function_codelist[-1][1]=="do"
+                    $call start_context, do_cond
+                    cur_item=cur_function_codelist[-1][0]
+                $else
+                    $call start_context, while_cond
+                    cur_item=[]
+                    cur_function_codelist.append: (cur_item, "while")
+
+
+    subcode:: post_process_cases
+        $elif $(cur_type) == "while_cond"
+            $call start_context, while_block
+            cur_item = cur[0]
+            continue

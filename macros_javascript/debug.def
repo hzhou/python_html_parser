@@ -1,0 +1,2 @@
+fncode: debug_ast(ast)
+    print ast
