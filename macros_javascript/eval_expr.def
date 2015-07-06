@@ -1,16 +1,10 @@
-subcode:: _autoload
-    atom_type = ["bool","null","int", "float","string","identifier"]
-    literal_type = ["bool", "null", "int", "float", "string"]
-    number_type = ["int", "float"]
-    float_type  = ["float"]
-    expr_type   = ["identifier", "binary", "unary"]
-
 fncode: eval_binary(op, a1, a2)
     macros:
         bi_type: a1[1] in $1_type and a2[1] in $2_type
+        and_type: a1[1] in $1_type and  a2[1] in $1_type
         or_type: a1[1] in $1_type or  a2[1] in $1_type
 
-    $if $(bi_type:number)
+    $if $(and_type:number)
         $if $(or_type:float)
             b1 = float(a1[0])
             b2 = float(a2[0])

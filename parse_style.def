@@ -1,3 +1,14 @@
+include: python/parse.def
+
+page: parse_style, basic_frame
+    module: python
+
+    s="body {background-color: #d0e4fe;}"
+    css=[]
+    parse_style_sheet(css, s)
+    $(if:1)
+        debug_style(css)
+
 fncode: parse_style_sheet(style_list, src)
     &call parse_loop
         &call if_match_continue, /\*.*?\*/
@@ -15,7 +26,8 @@ fncode: parse_style_sheet(style_list, src)
 
 fncode: parse_style(style, src, src_pos)
     src_len = len(src)
-    &call sub_loop
+    $(set:skip_src_len)
+    &call parse_loop
         &call if_match_continue, \s+
             #-- skip --
         &call if_match_continue, /\*.*?\*/
@@ -29,3 +41,9 @@ fncode: parse_style(style, src, src_pos)
         &call if_match_break, }
             #-- skip --
     return src_pos
+
+#---------------------------------------- 
+fncode: debug_style(css)
+    $for t in css
+        print "selector: ", t["selector"], "\n\t", t["style"], "\n"
+

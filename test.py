@@ -1,10 +1,13 @@
 import re
+import parse_style
 def main():
     f = open('test.html')
     s = f.read()
-    root_node = parse_html(s)
+    page = parse_html(s)
+    debug_dom(page["dom"])
 
 def parse_html(src):
+    style_list=[]
     tag_stack=[]
     cur_list=[]
     tag_stack.append({'_name':'root', '_list':cur_list})
@@ -49,15 +52,16 @@ def parse_html(src):
                         else:
                             continue
                     src_pos+=1
-                    src_pos+=1
                 i_end=src_pos
                 tag['_text'] = src[i_start:i_end]
+                if s_name.lower() == "style":
+                    parse_style.parse_style_sheet(style_list, src[i_start:i_end])
             else:
                 tag_stack.append(tag)
                 cur_list=[]
                 tag['_list'] = cur_list
             continue
-        m = re7.match(src, src_pos)
+        m = re6.match(src, src_pos)
         if m:
             src_pos=m.end()
             s_name=m.group(1)
@@ -75,50 +79,50 @@ def parse_html(src):
                     j-=1
             continue
         src_pos+=1
-    return tag_stack[0]
+        continue
+    return {"dom":tag_stack[0], "style_list":style_list}
 
 def parse_attribute(tag, src):
     src_len=len(src)
     src_pos=0
     while src_pos < src_len:
+        m = re7.match(src, src_pos)
+        if m:
+            src_pos=m.end()
+            continue
+        if src_pos+1<=src_len and src[src_pos:src_pos+1]=='/':
+            src_pos+=1
+            tag['/']=1
+            continue
         m = re8.match(src, src_pos)
         if m:
             src_pos=m.end()
-            continue
-        m = re9.match(src, src_pos)
-        if m:
-            src_pos=m.end()
-            tag['/']=1
-            continue
-        m = re10.match(src, src_pos)
-        if m:
-            src_pos=m.end()
             s_attr_name=m.group(1)
-            m = re11.match(src, src_pos)
+            m = re9.match(src, src_pos)
             if m:
                 src_pos=m.end()
                 while src_pos < src_len:
+                    m = re10.match(src, src_pos)
+                    if m:
+                        src_pos=m.end()
+                        tag[s_attr_name] = m.group(1)
+                        break
+                    m = re11.match(src, src_pos)
+                    if m:
+                        src_pos=m.end()
+                        tag[s_attr_name] = m.group(1)
+                        break
                     m = re12.match(src, src_pos)
-                    if m:
-                        src_pos=m.end()
-                        tag[s_attr_name] = m.group(1)
-                        break
-                    m = re13.match(src, src_pos)
-                    if m:
-                        src_pos=m.end()
-                        tag[s_attr_name] = m.group(1)
-                        break
-                    m = re14.match(src, src_pos)
                     if m:
                         src_pos=m.end()
                         tag[s_attr_name] = m.group(0)
                         break
                     i+=1
-                    src_pos+=1
             else:
                 tag[s_attr_name]=1
             continue
         src_pos+=1
+        continue
 
 def debug_dom(node):
     def print_node(node, level):
@@ -137,13 +141,11 @@ re3 = re.compile(r"[^<]+")
 re4 = re.compile(r"<(\w+)(.*?)>")
 re5 = re.compile(r"([^<]|<[^/])+")
 re6 = re.compile(r"</(\w+).*?>")
-re7 = re.compile(r"</(\w+).*?>")
-re8 = re.compile(r"\s+")
-re9 = re.compile(r"/")
-re10 = re.compile(r"([^\s'\"\\=<>`]+)")
-re11 = re.compile(r"\s*=\s*")
-re12 = re.compile(r"\"((?:[^\\\"]+|\\.)*)\"")
-re13 = re.compile(r"'((?:[^\\\']+|\\.)*)'")
-re14 = re.compile(r"[^\s'\"=<>`]+")
+re7 = re.compile(r"\s+")
+re8 = re.compile(r"([^\s'\"\\=<>`]+)")
+re9 = re.compile(r"\s*=\s*")
+re10 = re.compile(r"\"((?:[^\\\"]+|\\.)*)\"")
+re11 = re.compile(r"'((?:[^\\\']+|\\.)*)'")
+re12 = re.compile(r"[^\s'\"=<>`]+")
 if __name__ == "__main__":
     main()

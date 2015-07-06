@@ -1,4 +1,4 @@
-include: python/parse_re.def
+include: python/parse.def
 
 page: test, basic_frame
     module: python
@@ -10,7 +10,7 @@ page: test, basic_frame
 
     page = parse_html(s)
     # print "root_node: ", type(root_node), "\n"
-    $(if:0)
+    $(if:1)
         debug_dom(page["dom"])
 
 fncode: parse_html(src)
@@ -55,7 +55,8 @@ fncode: parse_html(src)
             #-- raw text --
             $call scan_raw_text
             $if s_name.lower() == "style"
-                parse_style_sheet(style_list, $(raw_text))
+                $import parse_style
+                parse_style.parse_style_sheet(style_list, $(raw_text))
         $else
             tag_stack.append: tag
             cur_list=[]
@@ -90,7 +91,7 @@ fncode: parse_html(src)
                     continue
             src_pos+=1
         i_end=src_pos
-        $(set:raw_text=src[i_start:i_end])
+        $(export:raw_text=src[i_start:i_end])
         tag['_text'] = src[i_start:i_end]
 
 
