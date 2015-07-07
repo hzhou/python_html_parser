@@ -68,16 +68,6 @@ subcode:: parse_javascript
             $call push_statement, stack[-1]
             cur_item = cur_function_codelist
         $call @reduce_context_cases
-        $elif type == "if_cond"
-            cur_item.append: stack[-1]
-        $elif type == "while_cond"
-            cur_item.append: stack[-1]
-        $elif type == "with_cond"
-            cur_item.append: stack[-1]
-        $elif type == "do_cond"
-            cur_item.append: stack[-1]
-        $elif type == "switch_cond"
-            cur_item.append: stack[-1]
         $else
             cur_item = stack[-1]
 

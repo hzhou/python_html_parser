@@ -17,147 +17,245 @@ subcode:: parse_javascript
             $else
                 raise Exception("function missing body")
 
+    macros:
+        last_statement_is: len(cur_function_codelist)>0 and cur_function_codelist[-1][1]=="$1"
+
     subcode:: match_statement
         #---- statement --------------------- 
         &call if_match_continue, var
             $call start_context, var
 
-        &call if_match_continue, return
-            $call start_context, return
-
-        &call if_match_continue, if
-            &call match_condition, if
-                $call start_context, if_cond
-                cur_item = []
-                cur_function_codelist.append: (cur_item, "if")
-
-        &call if_match_continue, else(\s+if)?
-            $if cur_function_codelist[-1][1]=="if"
-                $if m.group[1]
-                    &call match_condition, if
-                        $call start_context, if_cond
-                        cur_item = cur_function_codelist[-1][0]
-                $else
-                    $call start_context, if_branch
-                    cur_item = cur_function_codelist[-1][0]
-                    cur_item.append: None
-            $else
-                raise Exception("dangling else")
-
-        &call if_match_continue, with
-            &call match_condition, with
-                $call start_context, with_cond
-                cur_item=[]
-                cur_function_codelist.append: (cur_item, "with")
-
-        &call if_match_continue, switch
-            &call match_condition, switch
-                $call start_context, switch_cond
-                cur_item=[]
-                cur_function_codelist.append: (cur_item, "switch")
-
-        &call if_match_continue, do
-            $call start_context, do_block
-            cur_item=[]
-            cur_function_codelist.append: (cur_item, "do")
-
-        $call @match_statement_cases
-
-        &call if_match_continue, try
-            $call skip_space_wide
-            &call if_match_single, {
-                $call start_context, try_compound
-                cur_item=[]
-                cur_function_codelist.append: ([cur_item, None, None, None], "try")
-        &call if_match_continue, catch
-            $if cur_function_codelist[-1][1]=="try"
-                t=cur_function_codelist[-1][0]
-            $else
-                raise Exception("dangling catch")
-            $call skip_space_wide
-            &call if_match_single, \(\s*(\w+)\s*\)
-                t[1]=m.group(1)
-            $else
-                raise Exception("Expect catch variable")
-            $call skip_space_wide
-            &call if_match_single, {
-                $call start_context, try_compound
-                cur_item=[]
-                t[2]=cur_item
-        &call if_match_continue, finally
-            $if cur_function_codelist[-1][1]=="try"
-                t=cur_function_codelist[-1][0]
-            $else
-                raise Exception("dangling catch")
-            $call skip_space_wide
-            &call if_match_single, {
-                $call start_context, try_compound
-                cur_item=[]
-                t[3]=cur_item
+        &call if_match_continue, (return|throw)
+            t = m.group(1)
+            $call start_context, t
 
         &call if_match_continue, (break|continue)
             t = m.group(1)
+
             t2 = ''
             $call skip_space_narrow
-            &call if_match_single, [_a-zA-Z\$]\w*
+            $if_match $(pat_identifier)
                 t2 = m.group(0)
+
             cur_function_codelist.append: (t2, t)
+
             $call skip_space_narrow
             &call if_match_single, [;\n\r]
                 #-- ok
             $else
                 raise Exception("; expected")
 
-        # ----
-        subcode: match_condition(type)
-            skip_space(1)
-            &call if_match_single, (
-                BLOCK
-            $else
-                raise Exception("$(type) missing condition")
-
-    #-- for -----------------
-    subcode:: match_statement_cases
-        $if_match for
-            &call match_condition, for
-                $call start_context, for_cond
-                cur_item=[]
-                cur_function_codelist.append: (cur_item, "for")
-
-    subcode:: reduce_context_cases
-        $elif type == "for_cond"
-            t = cur_item
-            cur_item.append: stack[-1]
-            stack[-2:]=[]
+    subcode:: wrap_statement_cases
+        $if cur_context == "var"
+            add_var(t)
+            stack.pop()
             $call pop_context
-            $call start_context, for_block
-            cur_item = t
-            cur=('', None)
-            break
-
-    subcode:: push_statement_cases
-        $elif cur_context == "for_cond"
-            cur_item.append: t
-        $elif cur_context == "for_block"
-            cur_item.append: t
+        $elif cur_context == "return" or cur_context=="throw"
+            t = (t, cur_context)
             stack.pop()
             $call pop_context
 
-    #-- while --------------------------
-    subcode:: match_statement_cases
+    subcode:: match_statement
+        #-- for -----------------
+        $if_match for
+            &call match_condition, for
+                $call start_cur_item, for_cond, for
+
+        #-- do ------------------------------
+        $if_match do
+            $call start_cur_item, do_block, do
+
+        #-- while --------------------------
         $if_match while
             &call match_condition, while
-                $if cur_function_codelist[-1][1]=="do"
-                    $call start_context, do_cond
-                    cur_item=cur_function_codelist[-1][0]
+                $if $(last_statement_is:do)
+                    $call continue_cur_item, do_cond
                 $else
-                    $call start_context, while_cond
-                    cur_item=[]
-                    cur_function_codelist.append: (cur_item, "while")
+                    $call start_cur_item, while_cond, while
 
+        #-- with -----------------------------
+        $if_match with
+            $call start_cur_item, with_cond, with
 
-    subcode:: post_process_cases
-        $elif $(cur_type) == "while_cond"
-            $call start_context, while_block
-            cur_item = cur[0]
+        #-- switch -----------------------------
+        $if_match switch
+            $call start_cur_item, switch_cond, switch
+
+        #-- if  ----------------
+        $if_match if
+            &call match_condition, if
+                $call start_cur_item, if_cond, if
+
+        $if_match else
+            $if $(last_statement_is:if)
+                $call skip_space_wide
+                $if_match if
+                    $call continue_cur_item, if_cond
+                $else
+                    $call continue_cur_item, else
+            $else
+                $call error, "dangling else"
+
+        #-- try   ------------------------------
+        $if_match try
+            &call match_compound, try
+                $call start_try_compound
+
+        $if_match catch
+            &call match_try_block
+                &call match_catch_exception_var
+                    &call match_compound, catch
+                        $call continue_try_compound, 2
+
+        $if_match finally
+            &call match_try_block
+                &call match_compound, finally
+                    $call continue_try_compound, 3
+
+    #---------------------------------------- 
+    subcode:: reduce_context_cases
+        $call wrap_condition_start_block, if_cond, if_branch
+        $call wrap_condition_start_block, for_cond, for_block
+        $call wrap_condition_start_block, while_cond, while_block
+        $call wrap_condition_start_block, with_cond, with_block
+        $call wrap_condition_start_compound, switch_cond, switch_block
+        $call wrap_context_into_cur, do_cond
+
+    subcode:: push_statement_cases
+        $call push_statement_cur_item, for_cond
+
+        $call push_statement_wrap_context, if_branch
+        $call push_statement_wrap_context, for_block
+        $call push_statement_wrap_context, while_block
+        $call push_statement_wrap_context, do_block
+        $call push_statement_wrap_context, with_block
+
+        $call push_statement_wrap_compound, switch_block
+        $call push_statement_wrap_compound, try_block
+
+    #---- support routines ---------------
+    subcode:: match_statement
+        subcode: match_condition(type)
+            $call skip_space_wide
+            &call if_match_single, (
+                BLOCK
+            $else
+                $call error, "$(type) missing condition"
+
+        subcode: match_compound(type)
+            $call skip_space_wide
+            &call if_match_single, {
+                BLOCK
+            $else
+                $call error, "$(type) missing {"
+
+        subcode: match_last_block(type)
+            $if $(last_statement_is:$(type))
+                BLOCK
+            $else
+                $call error, "missing $(type) block"
+
+        subcode: match_catch_exception_var
+            $call skip_space_wide
+            &call if_match_single, \(\s*(\w+)\s*\)
+                t[1]=m.group(1)
+                BLOCK
+            $else
+                $call error, "catch expect exception variable"
+        # ---
+        subcode: start_cur_item(context, statement_type)
+            $call start_context, $(context)
+            cur_item=[]
+            cur_function_codelist.append: (cur_item, "$(type)")
             continue
+
+        subcode: continue_cur_item(new_context)
+            $(if:new_context=else)
+                $call start_context, if_branch
+                cur_item=cur_function_codelist[-1][0]
+                cur_item.append: None
+            $(else)
+                $call start_context, $(new_context)
+                cur_item=cur_function_codelist[-1][0]
+            continue
+
+        # ---
+        subcode: start_try_compound
+            $call start_context, try_block
+            $call start_context, compound
+            #- try block, exception, catch block, final block
+            t=[cur_item, None, None, None]
+            cur_function_codelist.append: (t, "try")
+            continue
+
+        subcode: match_try_block
+            &call match_last_block, try
+                t=cur_function_codelist[-1][0]
+                BLOCK
+
+        subcode: continue_try_compound(n)
+            $call start_context, try_block
+            $call start_context, compound
+            t[$(n)]=cur_item
+            continue
+
+    #---------------------------------------- 
+    subcode:: reduce_context_cases
+        subcode: wrap_context_into_cur(context)
+            $elif type == "$(cond)"
+                cur_item.append: stack[-1]
+                cur = (cur_item, type)
+                stack[-2:]=[]
+                $call pop_context
+                break
+
+        subcode: wrap_condition_start_block(cond, block)
+            $elif type == "$(cond)"
+                t = cur_item
+                cur_item.append: stack[-1]
+                stack[-2:]=[]
+                $call pop_context
+
+                $call start_context, $(block)
+                cur_item = t
+
+                cur=('', None)
+                break
+
+        subcode: wrap_condition_start_compound(cond, block)
+            $elif type == "$(cond)"
+                t = cur_item
+                t.append: stack[-1]
+                stack[-2:]=[]
+                $call pop_context
+                
+                $call skip_space_wide
+                $if_match {
+                    $call start_context, $(block)
+                    $call start_context, compound
+                    t.append: cur_item
+                $else
+                    $call error, "$(block) missing {"
+
+                cur=('', None)
+                break
+
+    #----------------------------
+    subcode:: push_statement_cases
+        subcode: push_statement_cur_item(context)
+            $elif cur_context == "$(context)"
+                cur_item.append: t
+
+        subcode: push_statement_wrap_compound(context)
+            $elif cur_context == "$(context)"
+                #-- the compound block should be in cur_item
+                # cur_item.append: t
+                stack.pop()
+                $call pop_context
+
+        subcode: push_statement_wrap_context(context)
+            $elif cur_context == "$(context)"
+                cur_item.append: t
+                stack.pop()
+                $call pop_context
+

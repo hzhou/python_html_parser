@@ -2,7 +2,7 @@ subcode:: parse_javascript
     $call parse_frame
 
     subcode: init
-        codelist_context=["function","compound","switch_compound", "try_compound"]
+        codelist_context=["function","compound"]
         $call parse_setup
         context_stack=[]
         cur_context = "function"
@@ -11,24 +11,25 @@ subcode:: parse_javascript
 
     subcode: setup_context_function(fn)
         cur_function_vardict={}
+        cur_function_fundict={}
         cur_function_codelist=[]
         $(fn)['_list']=cur_function_codelist
         $(fn)['_var']=cur_function_vardict
+        $(fn)['_fun']=cur_function_fundict
         cur_item = $(fn)
-
-    subcode: setup_context_compound(list)
-        cur_item=$(list)
-        cur_function_codelist=cur_item
 
     subcode: start_context(context)
         context_stack.append: (cur_item, cur_context)
         cur_context = "$(context)"
         stack.append: ("$(context)", 'boc')
+        $(if:context=compound)
+            cur_item = []
+            cur_function_codelist=cur_item
 
     subcode: pop_context
         $if cur_context in codelist_context
             $for x in reversed(context_stack)
-                $if x[1]=="compound" or x[1]=="switch_compound"
+                $if x[1]=="compound"
                     cur_function_codelist=x[0]
                     break
                 $elif x[1]=="function"
@@ -38,6 +39,7 @@ subcode:: parse_javascript
             $for x in reversed(context_stack)
                 $if x[1]=="function"
                     cur_function_vardict=x[0]["_var"]
+                    cur_function_fundict=x[0]["_fun"]
                     break
         (cur_item, cur_context)=context_stack.pop()
 
@@ -46,39 +48,15 @@ subcode:: parse_javascript
         $(if:t!=t)
             t = $(t)
 
-        $if 0
-            pass
-        $elif cur_context == "var"
-            add_var(t)
-            stack.pop()
-            $call pop_context
-        $elif cur_context == "return"
-            stack.pop()
-            $call pop_context
-            t = (t, "return")
-        $elif cur_context == "throw"
-            stack.pop()
-            $call pop_context
-            t = (t, "throw")
+        $call wrap_statement_cases
 
         $if cur_context in codelist_context
-            cur_function_codelist.append: t
-        $elif cur_context == "if_branch"
-            cur_item.append: t
-            stack.pop()
-            $call pop_context
-        $elif cur_context == "while_block"
-            cur_item.append: t
-            stack.pop()
-            $call pop_context
-        $elif cur_context == "with_block"
-            cur_item.append: t
-            stack.pop()
-            $call pop_context
-        $elif cur_context == "do_block"
-            cur_item.append: t
-            stack.pop()
-            $call pop_context
+            $if t[1]=="function"
+                name=t[0]["_name"]
+                $if name
+                    cur_function_funlist[name]=t[1]
+            $else
+                cur_function_codelist.append: t
         $call @push_statement_cases
         $else
             raise Exception("wrong context for statement")

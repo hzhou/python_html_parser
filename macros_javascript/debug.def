@@ -1,2 +1,43 @@
 fncode: debug_ast(ast)
-    print ast
+    $def str_ast(ast)
+        return str(ast)
+
+    $def print_ast(ast, indent)
+        t = '    ' * indent
+        $if ast[1]=="function"
+            $if ast[0]['_name']=="_global"
+                print_global(ast[0])
+            $else
+                print_function(ast[0], indent)
+        $elif ast[1]=="for"
+            print t,"for ", ast[0][0], ';   ', ast[0][1], ';   ', ast[0][2]
+            print_ast(ast[0][3], indent+1)
+
+        $else
+            t2 = str_ast(ast)
+            $print $t$t2
+
+    $def print_global(g)
+        print_function(g, 0)
+
+    $def print_function(f, indent)
+        t = '    ' * indent
+        $if f['_var']
+            print t, "var: ", f['_var']
+            print()
+        $if f['_fun']
+            $for f2 in f['_fun']
+                print t, "function ", f['_name'], "(", f['_param'], ")"
+                print_function(f2, indent+1)
+            print()
+        print t, "code:"
+        $for t in f['_list']
+            print_ast(t, indent+1)
+
+    #---------------------------------------- 
+
+    $(if:0)
+        print ast
+    $(else)
+        print_ast(ast, 0)
+

@@ -32,7 +32,7 @@ fncode:: parse_javascript(src, pos_begin=-1, pos_end=-1)
         src_len = pos_end
 
     $(set:skip_src_len)
-    $(set:debug=200)
+    # $(set:debug=200)
     $call parse_frame
 
     # ---------------------------------------- 
@@ -145,7 +145,6 @@ fncode:: parse_javascript(src, pos_begin=-1, pos_end=-1)
                 $if op == '{'
                     $if $(type:-1)=='boc'
                         $call start_context, compound
-                        $call setup_context_compound, []
                     $else
                         $call start_context, object
                         cur_item={}
@@ -222,37 +221,16 @@ fncode:: parse_javascript(src, pos_begin=-1, pos_end=-1)
 
     # ---------------------------------------- 
     subcode: post_process
-        &call on_debug
-            print "post_process: cur = ", cur
         $if $(cur_type) == ';'
             $call push_statement, stack.pop()
             continue
         $elif $(cur_type) == "compound"
             $call push_statement, $(cur_atom)
             continue
-        $call @post_process_cases
-        $elif $(cur_type) == "if_cond"
-            $call start_context, if_branch
-            cur_item = cur[0]
-            continue
-        $elif $(cur_type) == "with_cond"
-            $call start_context, with_block
-            cur_item = cur[0]
-            continue
-        $elif $(cur_type) == "do_cond"
-            continue
-        $elif $(cur_type) == "switch_cond"
-            skip_space(1)
-            &call if_match_single, {
-                $call start_context, switch_compound
-                $call setup_context_compound, cur[0]
-            continue
-        $elif $(cur_type) == "switch_compound"
-            continue
 
     subcode: pre_return
         $if len(stack)>1
             $call push_statement, stack.pop()
-        return cur_item
+        return (cur_item, cur_context)
 
 
